@@ -1,0 +1,96 @@
+{
+    "output_dir": "output",
+    "trained_autoencoder_path": "maisi/models/autoencoder_epoch273.pt",
+    "trained_diffusion_path": "maisi/models/diff_unet_3d_ddpm.pt",
+    "diffusion_unet_inference": {
+        "top_region_index": [
+            0,
+            1,
+            0,
+            0
+        ],
+        "bottom_region_index": [
+            0,
+            1,
+            0,
+            0
+        ],
+        "random_seed": 42,
+        "num_inference_steps": 1000,
+        "modality": 1
+    },
+    "spatial_dims": 3,
+    "image_channels": 1,
+    "latent_channels": 4,
+    "include_body_region": true,
+    "autoencoder_def": {
+        "_target_": "monai.apps.generation.maisi.networks.autoencoderkl_maisi.AutoencoderKlMaisi",
+        "spatial_dims": "@spatial_dims",
+        "in_channels": "@image_channels",
+        "out_channels": "@image_channels",
+        "latent_channels": "@latent_channels",
+        "num_channels": [
+            64,
+            128,
+            256
+        ],
+        "num_res_blocks": [2,2,2],
+        "norm_num_groups": 32,
+        "norm_eps": 1e-06,
+        "attention_levels": [
+            false,
+            false,
+            false
+        ],
+        "with_encoder_nonlocal_attn": false,
+        "with_decoder_nonlocal_attn": false,
+        "use_checkpointing": false,
+        "use_convtranspose": false,
+        "norm_float16": true,
+        "num_splits": 4,
+        "dim_split": 1
+    },
+    "diffusion_unet_def": {
+        "_target_": "monai.apps.generation.maisi.networks.diffusion_model_unet_maisi.DiffusionModelUNetMaisi",
+        "spatial_dims": "@spatial_dims",
+        "in_channels": "@latent_channels",
+        "out_channels": "@latent_channels",
+        "num_channels": [
+            64,
+            128,
+            256,
+            512
+        ],
+        "attention_levels": [
+            false,
+            false,
+            true,
+            true
+        ],
+        "num_head_channels": [
+            0,
+            0,
+            32,
+            32
+        ],
+        "num_res_blocks": 2,
+        "use_flash_attention": true,
+        "include_top_region_index_input": "@include_body_region",
+        "include_bottom_region_index_input": "@include_body_region",
+        "include_spacing_input": true
+    },
+    "noise_scheduler": {
+        "_target_": "monai.networks.schedulers.DDIMScheduler",
+        "num_train_timesteps": 1000,
+        "beta_start": 0.0015,
+        "beta_end": 0.0195,
+        "schedule": "scaled_linear_beta",
+        "clip_sample": false
+    },
+    "dataset": {
+        "name": "l2reg_lungCT",
+        "intensity_shift": 0,
+        "win_level": 0,
+        "win_width": 2000        
+    }
+}
