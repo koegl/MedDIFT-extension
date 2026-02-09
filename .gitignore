@@ -1,2 +1,4 @@
 .venv/
 .env
+maisi/*
+__pycache__/*
