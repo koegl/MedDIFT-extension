@@ -32,7 +32,7 @@ from maisi.scripts.utils import define_instance
 
 from helper import *
 from preprocess import *
-from landmark_utils import *
+# from landmark_utils import *
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 set_determinism(42)
@@ -235,21 +235,39 @@ def match_points_l2reg(
 ):
     """
     Match keypoints using cosine similarity of diffusion features.
+
+    Args:
+    source_points: (N, 3) array of keypoints in source image, each as (w, h, d) integer voxel coords
+    features_source: List of feature tensors from source image at selected levels. 
+                     E.g. features_source[0]: (C[0], 192, 192, 208) for C in [512,256,128,64]
+    features_target: Same
+    levels: String of level indices to use, e.g. "0123" to use all 4 levels
+    device: CUDA or CPU device
     """
     src_feats, tgt_feats = [], []
 
+    # 1) Select feature maps for the requested levels
+    # 'map' allows you to iterate over the characters in the 'levels' string and convert them to integers
     for lvl in map(int, levels):
         src_feats.append(features_source[lvl])
         tgt_feats.append(features_target[lvl])
 
+    # 2) Extract per-point features from the source
+    # For each selected source feature map feat of shape (C, W, H, D):
     src_point_feats = []
     for feat in src_feats:
-        f = feat[:, source_points[:, 0], source_points[:, 1], source_points[:, 2]].to(device)
+        f = feat[
+            :, source_points[:, 0], source_points[:, 1], source_points[:, 2]
+        ].to(device)  # this indexes all points at once, resulting in shape (C, N)
+
+        # normalize along last dim → each point’s C-dim vector becomes unit length
         f = F.normalize(f.T[:, None], p=2, dim=-1, eps=1e-8)
         src_point_feats.append(f)
 
+    # concatenate along feature dimension → shape (N, 1, sum(C))
     src_point_feats = torch.cat(src_point_feats, dim=-1).to(device)
 
+    # 3) Build target descriptors for every voxel (flattened)
     tgt_feats_flat = []
     for feat in tgt_feats:
         f = F.normalize(feat, p=2, dim=0, eps=1e-8)
@@ -259,16 +277,20 @@ def match_points_l2reg(
 
     tgt_feats_flat = torch.cat(tgt_feats_flat, dim=0).to(device)
 
+    # 4) Similarity computation (cosine similarity)
     sims = torch.matmul(
         src_point_feats, tgt_feats_flat.unsqueeze(0)
     ).detach().cpu() / len(levels)
-
+    # reshape back to original spatial dimensions
     w, h, d = tgt_feats[0].shape[1:]
     sims = sims.view(-1, w, h, d)
+    # sims[i, x, y, z] is now the similarity between source point i and target voxel (x,y,z)
 
+    # 5) Pick best match per source point
     flat = sims.view(sims.shape[0], -1)
     idx = flat.argmax(dim=-1)
 
+    # For each source point, the best-matching target coordinate
     matches = torch.stack(
         torch.unravel_index(idx, (w, h, d)), dim=1
     )
@@ -283,18 +305,25 @@ def calc_l2_err(pred: np.ndarray, gt: np.ndarray, spacing) -> np.ndarray:
     spacing = np.asarray(spacing)
     return np.linalg.norm((pred - gt) * spacing, axis=1)
 
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
         description="Diffusion feature-based keypoint matching"
     )
-    parser.add_argument("--img1", type=str, required=True, help="Path to source image (img1)")
-    parser.add_argument("--img2", type=str, required=True, help="Path to target image (img2)")
-    parser.add_argument("--lm1", type=str, required=True, help="Path to source keypoints CSV")
-    parser.add_argument("--out", type=str, default="predicted_lm2.csv", help="Output csv path for predicted keypoints")
-    parser.add_argument("--config", type=str, default="config_ddpm_lung", help="MAISI config name")
+    # parser.add_argument("--img1", type=str, required=True,
+    #                     help="Path to source image (img1)")
+    # parser.add_argument("--img2", type=str, required=True,
+    #                     help="Path to target image (img2)")
+    # parser.add_argument("--lm1", type=str, required=True,
+    #                     help="Path to source keypoints CSV")
+    parser.add_argument("--out", type=str, default="predicted_lm2.csv",
+                        help="Output csv path for predicted keypoints")
+    parser.add_argument("--config", type=str,
+                        default="config_ddpm_lung", help="MAISI config name")
     parser.add_argument("--t", type=int, default=20, help="Diffusion timestep")
-    parser.add_argument("--levels", type=str, default="0123", help="Feature levels to use")
+    parser.add_argument("--levels", type=str, default="0123",
+                        help="Feature levels to use")
     parser.add_argument("--batch_size", type=int, default=512)
     parser.add_argument("--device", type=str, default="cuda:0")
 
@@ -309,11 +338,12 @@ if __name__ == "__main__":
     np.random.seed(42)
 
     # Load inputs
-    image1_path = cli_args.img1
-    image2_path = cli_args.img2
-    lm1_path = cli_args.lm1
+    image1_path = r"/home/iml/fryderyk.koegl/data/LungCT/imagesTr/LungCT_0001_0000.nii.gz"  # cli_args.img1
+    image2_path = r"/home/iml/fryderyk.koegl/data/LungCT/imagesTr/LungCT_0001_0001.nii.gz"  # cli_args.img2
+    lm1_path = r"/home/iml/fryderyk.koegl/data/LungCT/keypointsTr/LungCT_0001_0000.csv"  # cli_args.lm1
 
     landmarks1 = np.loadtxt(lm1_path, delimiter=",")  # (N, 3)
+    # landmarks1 = landmarks1[:4]  # temporary for testing
 
     spacing1 = sitk.ReadImage(image1_path).GetSpacing()
     spacing2 = sitk.ReadImage(image2_path).GetSpacing()
@@ -321,12 +351,16 @@ if __name__ == "__main__":
     # Load models
     autoencoder = define_instance(args, "autoencoder_def").to(device)
     autoencoder.load_state_dict(
-        torch.load(args.trained_autoencoder_path, map_location=device)
+        torch.load(
+            r"/home/iml/fryderyk.koegl/code/MedDIFT-extension/maisi/models/autoencoder_v1.pt", map_location=device)
+        # torch.load(args.trained_autoencoder_path, map_location=device)
     )
     autoencoder.eval()
 
     diffusion_unet = define_instance(args, "diffusion_unet_def").to(device)
-    diffusion_ckpt = torch.load(args.trained_diffusion_path, weights_only=False)
+    diffusion_ckpt = torch.load(
+        r"/home/iml/fryderyk.koegl/code/MedDIFT-extension/maisi/models/diff_unet_3d_ddpm-ct.pt", weights_only=False)
+    # args.trained_diffusion_path, weights_only=False)
     diffusion_unet.load_state_dict(
         diffusion_ckpt["unet_state_dict"], strict=False
     )
@@ -364,7 +398,7 @@ if __name__ == "__main__":
     print(f"[INFO] Matching keypoints using levels {level_str}")
 
     for i in range(0, landmarks1.shape[0], batch_size):
-        lm_batch = landmarks1[i : i + batch_size]
+        lm_batch = landmarks1[i: i + batch_size]
 
         matches, _ = match_points_l2reg(
             lm_batch,
