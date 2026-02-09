@@ -172,8 +172,8 @@ def upsample_to_original(
 
 
 def extract_features_all_levels(
-    args,
-    spacing,
+    args: argparse.Namespace,
+    spacing: Tuple[float, float, float],
     image_path: str,
     autoencoder,
     diffusion_unet,
@@ -182,7 +182,7 @@ def extract_features_all_levels(
     scale_factor,
     win_level: int,
     win_width: int,
-):
+) -> Tuple[List[torch.Tensor], Tuple[int, int, int], np.ndarray]:
     """
     Extract and upsample diffusion UNet features from all decoder levels.
     """
@@ -232,7 +232,7 @@ def match_points_l2reg(
     features_target: List[torch.Tensor],
     levels: str,
     device: torch.device,
-):
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Match keypoints using cosine similarity of diffusion features.
 

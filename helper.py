@@ -1,7 +1,11 @@
 import argparse
 import json
-import torch
+
+from typing import Tuple
+
 import numpy as np
+import torch
+
 
 def load_config(config_path: str) -> argparse.Namespace:
     """
@@ -22,10 +26,14 @@ def load_config(config_path: str) -> argparse.Namespace:
 
     return args
 
+
 def transfer_lm_simple(lm1, img1_shape, img2_shape):
     return lm1 * (img1_shape / img2_shape)
 
-def prepare_tensors(args: argparse.Namespace, spacing: tuple, device: torch.device) -> tuple:
+
+def prepare_tensors(
+        args: argparse.Namespace, spacing: Tuple[float, float, float], device: torch.device
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Prepare necessary tensors for inference.
 
@@ -36,13 +44,18 @@ def prepare_tensors(args: argparse.Namespace, spacing: tuple, device: torch.devi
     Returns:
         tuple: Prepared top_region_index_tensor, bottom_region_index_tensor, and spacing_tensor.
     """
-    top_region_index_tensor = np.array(args.diffusion_unet_inference["top_region_index"]).astype(float) * 1e2
-    bottom_region_index_tensor = np.array(args.diffusion_unet_inference["bottom_region_index"]).astype(float) * 1e2
+    top_region_index_tensor = np.array(
+        args.diffusion_unet_inference["top_region_index"]).astype(float) * 1e2
+    bottom_region_index_tensor = np.array(
+        args.diffusion_unet_inference["bottom_region_index"]).astype(float) * 1e2
     spacing_tensor = np.array(spacing).astype(float) * 1e2
 
-    top_region_index_tensor = torch.from_numpy(top_region_index_tensor[np.newaxis, :]).half().to(device)
-    bottom_region_index_tensor = torch.from_numpy(bottom_region_index_tensor[np.newaxis, :]).half().to(device)
-    spacing_tensor = torch.from_numpy(spacing_tensor[np.newaxis, :]).half().to(device)
+    top_region_index_tensor = torch.from_numpy(
+        top_region_index_tensor[np.newaxis, :]).half().to(device)
+    bottom_region_index_tensor = torch.from_numpy(
+        bottom_region_index_tensor[np.newaxis, :]).half().to(device)
+    spacing_tensor = torch.from_numpy(
+        spacing_tensor[np.newaxis, :]).half().to(device)
     modality_tensor = args.diffusion_unet_inference["modality"] * torch.ones(
         (len(spacing_tensor)), dtype=torch.long
     ).to(device)
