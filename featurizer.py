@@ -38,7 +38,7 @@ from maisi.scripts.diff_model_setting import load_config, setup_logging
 from maisi.scripts.utils import define_instance
 
 from helper import *
-from preprocess import *
+import preprocess
 # from landmark_utils import *
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -46,6 +46,10 @@ os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 set_determinism(42)
 logger = setup_logging("diffusion_feature_matching")
 
+image_preprocessing_functions = {
+    "LungCT_l2reg": preprocess.preprocess_img_lungct_l2reg,
+    "LungCT_dir_qa": preprocess.preprocess_img_lungct_dir_qa,
+    }
 
 def extract_latent(
     image_np: np.ndarray,
@@ -187,14 +191,13 @@ def extract_features_all_levels(
     device,
     timestep: int,
     scale_factor,
-    win_level: int,
-    win_width: int,
+    dataset: str
 ) -> Tuple[List[torch.Tensor], Tuple[int, int, int], np.ndarray]:
     """
     Extract and upsample diffusion UNet features from all decoder levels.
     """
-    original_np, preprocessed_np, _, original_shape = preprocess_img_l2reg(
-        image_path, win_level, win_width
+    original_np, preprocessed_np, _, original_shape = image_preprocessing_functions[dataset](
+        image_path
     )
 
     (
@@ -338,7 +341,12 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=512)
     parser.add_argument("--device", type=str, default="cuda:0")
 
+    parser.add_argument("--dataset", type=str, required=True, help="Dataset name for preprocessing selection")
+
     cli_args = parser.parse_args()
+
+    if cli_args.dataset not in image_preprocessing_functions:
+        raise ValueError(f"Unsupported dataset: {cli_args.dataset}. Supported datasets: {list(image_preprocessing_functions.keys())}")
 
     # Setup
     device = torch.device(cli_args.device)
@@ -353,9 +361,8 @@ if __name__ == "__main__":
     image2_path = cli_args.img2
     lm1_path = cli_args.lm1
 
-    landmarks1 = np.loadtxt(lm1_path, delimiter=",")  # (N, 3)
-    # landmarks1 = landmarks1[:4]  # temporary for testing
-
+    landmarks1 = preprocess.load_landmarks(lm1_path, image1_path)  # (N, 3)
+    
     spacing1 = sitk.ReadImage(image1_path).GetSpacing()
     spacing2 = sitk.ReadImage(image2_path).GetSpacing()
 
@@ -363,14 +370,12 @@ if __name__ == "__main__":
     autoencoder = define_instance(args, "autoencoder_def").to(device)
     autoencoder.load_state_dict(
         torch.load(
-            # r"/home/iml/fryderyk.koegl/code/MedDIFT-extension/maisi/models/autoencoder_v1.pt", map_location=device)
             args.trained_autoencoder_path, map_location=device)
     )
     autoencoder.eval()
 
     diffusion_unet = define_instance(args, "diffusion_unet_def").to(device)
     diffusion_ckpt = torch.load(
-        # r"/home/iml/fryderyk.koegl/code/MedDIFT-extension/maisi/models/diff_unet_3d_ddpm-ct.pt", weights_only=False)
         args.trained_diffusion_path, weights_only=False)
     diffusion_unet.load_state_dict(
         diffusion_ckpt["unet_state_dict"], strict=False
@@ -380,7 +385,6 @@ if __name__ == "__main__":
     scale_factor = diffusion_ckpt["scale_factor"].to(device)
 
     # Feature extraction
-    win_level, win_width = 0, 2000
     t = cli_args.t
 
     print(f"[INFO] Extracting diffusion features at t={t}")
@@ -390,14 +394,14 @@ if __name__ == "__main__":
             args, spacing1, image1_path,
             autoencoder, diffusion_unet,
             device, t, scale_factor,
-            win_level, win_width
+            dataset=cli_args.dataset
         )
 
         features2, original_shape2, _ = extract_features_all_levels(
             args, spacing2, image2_path,
             autoencoder, diffusion_unet,
             device, t, scale_factor,
-            win_level, win_width
+            dataset=cli_args.dataset
         )
 
     # Landmark matching
