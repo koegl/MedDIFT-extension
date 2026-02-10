@@ -98,7 +98,10 @@ def load_landmarks(landmarks_csv_path: str, nifti_path: str) -> np.ndarray:
     x_size = int(img.shape[0])
     axcodes = aff2axcodes(img.affine)
 
-    pts = np.loadtxt(landmarks_csv_path, delimiter=",", dtype=np.float32)
+    if landmarks_csv_path.endswith(".txt"):
+        pts = np.loadtxt(landmarks_csv_path, dtype=np.float32)
+    else:
+        pts = np.loadtxt(landmarks_csv_path, delimiter=",", dtype=np.float32)
     pts = np.atleast_2d(pts)
     if pts.shape[1] != 3:
         raise ValueError(f"Expected Nx3 landmarks, got shape {pts.shape}")
