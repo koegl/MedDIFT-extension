@@ -110,7 +110,4 @@ def load_landmarks(landmarks_csv_path: str, nifti_path: str) -> np.ndarray:
     else:
         raise ValueError(f"Unsupported orientation {axcodes}; expected LAS or RAS.")
 
-    # save pts in RAS order (x,y,z) for consistency with image processing
-    np.savetxt("landmarks_ras.csv", pts, delimiter=",", fmt="%.2f")
-
     return pts
