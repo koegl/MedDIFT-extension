@@ -32,7 +32,6 @@ from maisi.scripts.utils import define_instance
 
 from helper import *
 from preprocess import *
-from landmark_utils import *
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 set_determinism(42)
@@ -223,6 +222,11 @@ def extract_features_all_levels(
             upsample_to_original(feat, original_shape)
         )
 
+
+    diffusion_unet.features = {}
+    del features
+    torch.cuda.empty_cache()
+
     return upsampled_features, original_shape, original_np
 
 
@@ -273,7 +277,10 @@ def match_points_l2reg(
         torch.unravel_index(idx, (w, h, d)), dim=1
     )
 
-    return matches.cpu().numpy(), sims.cpu().numpy()
+    del src_point_feats, tgt_feats_flat, sims
+    torch.cuda.empty_cache()
+
+    return matches.cpu().numpy()
 
 
 def calc_l2_err(pred: np.ndarray, gt: np.ndarray, spacing) -> np.ndarray:
@@ -288,14 +295,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Diffusion feature-based keypoint matching"
     )
-    parser.add_argument("--img1", type=str, required=True, help="Path to source image (img1)")
-    parser.add_argument("--img2", type=str, required=True, help="Path to target image (img2)")
-    parser.add_argument("--lm1", type=str, required=True, help="Path to source keypoints CSV")
+    # parser.add_argument("--img1", type=str, required=True, help="Path to source image (img1)")
+    # parser.add_argument("--img2", type=str, required=True, help="Path to target image (img2)")
+    # parser.add_argument("--lm1", type=str, required=True, help="Path to source keypoints CSV")
     parser.add_argument("--out", type=str, default="predicted_lm2.csv", help="Output csv path for predicted keypoints")
     parser.add_argument("--config", type=str, default="config_ddpm_lung", help="MAISI config name")
     parser.add_argument("--t", type=int, default=20, help="Diffusion timestep")
     parser.add_argument("--levels", type=str, default="0123", help="Feature levels to use")
-    parser.add_argument("--batch_size", type=int, default=512)
+    parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--device", type=str, default="cuda:0")
 
     cli_args = parser.parse_args()
@@ -309,9 +316,9 @@ if __name__ == "__main__":
     np.random.seed(42)
 
     # Load inputs
-    image1_path = cli_args.img1
-    image2_path = cli_args.img2
-    lm1_path = cli_args.lm1
+    image1_path = r"/home/iml/fryderyk.koegl/data/LungCT/imagesTr/LungCT_0001_0000.nii.gz"  # cli_args.img1
+    image2_path = r"/home/iml/fryderyk.koegl/data/LungCT/imagesTr/LungCT_0001_0001.nii.gz"  # cli_args.img2
+    lm1_path = r"/home/iml/fryderyk.koegl/data/LungCT/keypointsTr/LungCT_0001_0000.csv"  # cli_args.lm1
 
     landmarks1 = np.loadtxt(lm1_path, delimiter=",")  # (N, 3)
 
@@ -363,18 +370,24 @@ if __name__ == "__main__":
 
     print(f"[INFO] Matching keypoints using levels {level_str}")
 
-    for i in range(0, landmarks1.shape[0], batch_size):
-        lm_batch = landmarks1[i : i + batch_size]
+    with torch.inference_mode():
+        for i in range(0, landmarks1.shape[0], batch_size):
+            lm_batch = landmarks1[i : i + batch_size]
 
-        matches, _ = match_points_l2reg(
-            lm_batch,
-            features1,
-            features2,
-            level_str,
-            device,
-        )
+            matches = match_points_l2reg(
+                lm_batch,
+                features1,
+                features2,
+                level_str,
+                device,
+            )
 
-        all_matches.append(matches)
+            all_matches.append(matches)
+
+            del matches
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
 
     predicted_lm2 = np.vstack(all_matches)
 
