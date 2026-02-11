@@ -53,6 +53,8 @@ def evaluate_lungct_l2reg() -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndar
     all_distances_after = []
     case_averages_after = []
 
+    spacing = np.array([1.75, 1.25, 1.75], dtype=np.float64)
+
     # before
     for i in range(21, 30):
         path_first_i = Path(path_ori_first.format(str(i).zfill(4)))
@@ -66,7 +68,8 @@ def evaluate_lungct_l2reg() -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndar
         pred = np.loadtxt(path_second_i, delimiter=",")
 
         # calculate the l2 distance between the two sets of points
-        distances = np.linalg.norm(ori - pred, axis=1)
+        diff_mm = (ori - pred) * spacing[None, :]
+        distances = np.linalg.norm(diff_mm, axis=1)
         dist_avg = np.mean(distances)
 
         all_distances_before.extend(distances)
@@ -85,7 +88,8 @@ def evaluate_lungct_l2reg() -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndar
         pred = np.loadtxt(path_pred_i, delimiter=",")
 
         # calculate the l2 distance between the two sets of points
-        distances = np.linalg.norm(ori - pred, axis=1)
+        diff_mm = (ori - pred) * spacing[None, :]
+        distances = np.linalg.norm(diff_mm, axis=1)
         dist_avg = np.mean(distances)
 
         all_distances_after.extend(distances)
