@@ -12,10 +12,8 @@ import cli
 import datasets
 import features
 import helper
-import runner
-import datasets
-import features
 import matching
+import preprocess   
 
 from maisi.scripts.diff_model_setting import setup_logging
 
@@ -41,7 +39,6 @@ def run_job(
     """Run one job end-to-end and write predicted landmark CSV."""
     spacing1 = sitk.ReadImage(str(job.img1)).GetSpacing()
     spacing2 = sitk.ReadImage(str(job.img2)).GetSpacing()
-    import preprocess
 
     landmarks1 = preprocess.load_landmarks(str(job.lm1), str(job.img1))
 
