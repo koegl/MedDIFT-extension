@@ -14,4 +14,5 @@ dependencies = [
     "simpleitk>=2.5.3",
     "torch>=2.10.0",
     "torchvision>=0.25.0",
+    "unigradicon>=1.0.4",
 ]
