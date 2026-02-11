@@ -92,25 +92,49 @@ def preprocess_img_lungct_dir_qa(
     return original_np, image_np, affine, tuple(shape)
 
 
+
 def load_landmarks(landmarks_csv_path: str, nifti_path: str) -> np.ndarray:
-    """Load Nx3 landmarks (sag,cor,ax index space) and map LAS->RAS by flipping x if needed."""
+    """Load Nx3 voxel-index landmarks and convert them to RAS index convention by flipping axes as needed."""
     img = nib.load(nifti_path)
-    x_size = int(img.shape[0])
+    shape = np.array(img.shape[:3], dtype=np.int64)
     axcodes = aff2axcodes(img.affine)
 
-    if landmarks_csv_path.endswith(".txt"):
-        pts = np.loadtxt(landmarks_csv_path, dtype=np.float32)
-    else:
-        pts = np.loadtxt(landmarks_csv_path, delimiter=",", dtype=np.float32)
+    pts = np.loadtxt(landmarks_csv_path, delimiter=",", dtype=np.float32)
     pts = np.atleast_2d(pts)
     if pts.shape[1] != 3:
         raise ValueError(f"Expected Nx3 landmarks, got shape {pts.shape}")
 
-    if axcodes == ("L", "A", "S"):
-        pts[:, 0] = (x_size - 1) - pts[:, 0]
-    elif axcodes == ("R", "A", "S"):
-        pass
-    else:
-        raise ValueError(f"Unsupported orientation {axcodes}; expected LAS or RAS.")
+    if axcodes[0] == "L":
+        pts[:, 0] = (shape[0] - 1) - pts[:, 0]
+    elif axcodes[0] != "R":
+        raise ValueError(f"Unsupported x axis code {axcodes[0]} in {axcodes}")
+
+    if axcodes[1] == "P":
+        pts[:, 1] = (shape[1] - 1) - pts[:, 1]
+    elif axcodes[1] != "A":
+        raise ValueError(f"Unsupported y axis code {axcodes[1]} in {axcodes}")
+
+    if axcodes[2] == "I":
+        pts[:, 2] = (shape[2] - 1) - pts[:, 2]
+    elif axcodes[2] != "S":
+        raise ValueError(f"Unsupported z axis code {axcodes[2]} in {axcodes}")
 
     return pts
+
+if __name__ == "__main__":
+    path_image_test = "/home/iml/fryderyk.koegl/data/Lung-DIR-QA/nii-txt_half/case0001_image1.nii"
+    path_image_test_trans = "/home/iml/fryderyk.koegl/data/Lung-DIR-QA/nii-txt_half/case0001_image1_trans.nii"
+
+    path_lm_test = "/home/iml/fryderyk.koegl/data/Lung-DIR-QA/nii-txt_half/case0001_landmarks1.txt"
+    path_lm_test_trans = "/home/iml/fryderyk.koegl/data/Lung-DIR-QA/nii-txt_half/case0001_landmarks1_trans.txt"
+
+    original_np, image_np, affine, shape = preprocess_img_lungct_dir_qa(path_image_test)
+    image_trans = nib.nifti1.Nifti1Image(image_np, affine)
+    nib.save(image_trans, path_image_test_trans)
+
+    landmarks = load_landmarks(path_lm_test, path_image_test)
+    np.savetxt(path_lm_test_trans, landmarks, delimiter=",", fmt="%.2f")
+
+    x = 0
+    
+      
